@@ -1,0 +1,14 @@
+# -*- eval: (tags-mode) -*-
+
+
+# TAG:LAST-MODIFIED 2014-03-15 20:24:13 CET
+# TAG:FILENAME README
+# TAG:CREATED  2014-03-15 20:21:31 CET
+
+
+This is a repo for things to be used with emacs[1].  Please see the
+READMEs of the particular directories for details.  I`ll add to it
+over time.
+
+
+[1]: http://savannah.gnu.org/projects/emacs

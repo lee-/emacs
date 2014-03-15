@@ -1,0 +1,37 @@
+# -*- eval: (tags-mode) -*-
+
+
+# TAG:LAST-MODIFIED 2014-03-15 20:18:55 CET
+# TAG:FILENAME README
+# TAG:CREATED 2014-03-15 20:00:20 CET
+
+
+tags-mode:
+
+	Automatically insert and update tags in files --- currently
+	supported tags are TAG:LAST-MODIFIED and TAG:FILENAME.
+
+	self documenting (M-x describe-mode, or see source)
+
+	More tags can be added with some programming.  If I need
+	support for more tags,	I`ll think about implementing some
+	sort of customisation so they can be added without changing
+	the code.
+
+	To install:
+
+		M-x byte-compile-file tags-mode.el
+		(load "tags-mode")  ;; in your ~/.emacs
+
+	En/disable the mode with M-x tags-mode. You can have a line in
+	your files specifying the mode, see first line of this file.
+
+	There is no TAG:CREATED since it doesn`t need to be updated
+	automatically. Just do M-x
+	tags-insert-file-name-with-last-modified, copy and edit.
+
+	There are no key bindings with this mode.  The idea is that
+	you enable the mode and M-x
+	tags-insert-file-name-with-last-modified once to get the tags
+	inserted, and that`s all.  Of course, feel free to make key
+	bindings.
