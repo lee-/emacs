@@ -982,19 +982,16 @@ the patterns read."
 	  patterns)))))
 
 (defun hi-lock-apply-patterns-from-file ()
-  "Use hi-lock-mode highlighting-patterns from another file with this file.
+  "Use hi-lock-mode highlighting-patterns from another file with this
+  file.
 
 Which file to read the patterns from is specified through
-`hi-lock-file-name-specifier'.  To specify a file, put a line
-like
+`hi-lock-file-name-specifier'.  This variable can be set as a
+buffer-local variable.
 
-
-// hi-lock-filename: ../some-file.fontify
-
-
-into the buffer you want to use the file with.  The file will be
-visited in another buffer, and additional patterns are written to
-the other buffer and saved to the file when this file is saved."
+The file will be visited in another buffer, and additional patterns
+are written to the other buffer and saved to the file when this file
+is saved."
   (hi-lock-get-patterns-file-name)
   (when hi-lock-patterns-file
     (let ((patterns (hi-lock-get-patterns-from-file hi-lock-patterns-file)))
