@@ -142,6 +142,33 @@ Instead, each hi-lock command will cycle through the faces in
   :type 'boolean
   :version "24.4")
 
+(defcustom hi-lock-file-name-specifier "\\(-\\*- \\)hi-lock-patterns-file"
+  "Expression used to find the name of a file to read hi-lock
+highlighting-patterns from.
+
+The default is set such that a line specifying the file variable
+`hi-lock-patterns-file' can be found.
+
+Please see `hi-lock-get-patterns-file-name' for how this
+expression is used."
+  :type '(string)
+  :group 'hi-lock)
+(put 'hi-lock-patterns-file 'safe-local-variable #'stringp)
+
+(defcustom hi-lock-patterns-end-marker "hi-lock-patterns-end"
+  "Expression used to mark the end of hi-lock highlighting-patterns in
+a buffer dedicated to holding such patterns.  This can be a regular
+expression.
+
+The expression that will be searched for is the return value of
+`hi-lock-make-reasonable-end-marker'.  It is appended to the buffer,
+in a new line, by `hi-lock-write-patterns-file'.
+
+`hi-lock-get-patterns-from-file' uses it to figure out when to stop
+reading the buffer."
+  :type '(string)
+  :group 'hi-lock)
+
 (defgroup hi-lock-faces nil
   "Faces for hi-lock."
   :group 'hi-lock
@@ -205,9 +232,31 @@ Instead, each hi-lock command will cycle through the faces in
   "Face for hi-lock mode."
   :group 'hi-lock-faces)
 
+(defface hi-global-variable
+  '((t (:foreground "Magenta")))
+  "Face to highlight global variables."
+  :group 'hi-lock-faces)
+
+(defface hi-functionlike
+  '((t (:foreground "LightGreen")))
+  "Face to highlight something that is like a function."
+  :group 'hi-lock-faces)
+
+(defface hi-constant
+  '((t (:foreground "brown4")))
+  "Face to highlight something that is a constant."
+  :group 'hi-faces)
+
 (defvar-local hi-lock-file-patterns nil
   "Patterns found in file for hi-lock.  Should not be changed.")
 (put 'hi-lock-file-patterns 'permanent-local t)
+
+(defvar-local hi-lock-patterns-file nil
+  "Remember the name of the file to read hi-lock highlighting-patterns
+  for this buffer from.
+
+Use this as buffer or dir local variable.")
+(put 'hi-lock-patterns-file 'permanent-local t)
 
 (defvar-local hi-lock-interactive-patterns nil
   "Patterns provided to hi-lock by user.  Should not be changed.")
@@ -242,33 +291,54 @@ a library is being loaded.")
   (let ((map (make-sparse-keymap "Hi Lock")))
     (define-key-after map [highlight-regexp]
       '(menu-item "Highlight Regexp..." highlight-regexp
-        :help "Highlight text matching PATTERN (a regexp)."))
+		  :help "Highlight text matching PATTERN (a regexp)."))
 
     (define-key-after map [highlight-phrase]
       '(menu-item "Highlight Phrase..." highlight-phrase
-        :help "Highlight text matching PATTERN (a regexp processed to match phrases)."))
+		  :help "Highlight text matching PATTERN (a regexp processed to match phrases)."))
 
     (define-key-after map [highlight-lines-matching-regexp]
       '(menu-item "Highlight Lines..." highlight-lines-matching-regexp
-        :help "Highlight lines containing match of PATTERN (a regexp)."))
+		  :help "Highlight lines containing match of PATTERN (a regexp)."))
 
     (define-key-after map [highlight-symbol-at-point]
       '(menu-item "Highlight Symbol at Point" highlight-symbol-at-point
-        :help "Highlight symbol found near point without prompting."))
+		  :help "Highlight symbol found near point without prompting."))
 
     (define-key-after map [unhighlight-regexp]
       '(menu-item "Remove Highlighting..." unhighlight-regexp
-        :help "Remove previously entered highlighting pattern."
-        :enable hi-lock-interactive-patterns))
+		  :help "Remove previously entered highlighting pattern."
+		  :enable hi-lock-interactive-patterns))
 
     (define-key-after map [hi-lock-write-interactive-patterns]
       '(menu-item "Patterns to Buffer" hi-lock-write-interactive-patterns
-        :help "Insert interactively added REGEXPs into buffer at point."
-        :enable hi-lock-interactive-patterns))
+		  :help "Insert interactively added REGEXPs into buffer at point."
+		  :enable hi-lock-interactive-patterns))
 
     (define-key-after map [hi-lock-find-patterns]
       '(menu-item "Patterns from Buffer" hi-lock-find-patterns
-        :help "Use patterns (if any) near top of buffer."))
+		  :help "Use patterns (if any) near top of buffer."))
+
+    (define-key-after map [hi-lock-constant]
+      '(menu-item "Highlight constant" hi-lock-constant
+		  :help "Highlight something at point that is a constant."))
+
+    (define-key-after map [hi-lock-functionlike]
+      '(menu-item "Highlight functionlike" hi-lock-functionlike
+		  :help "Highlight something at point that is like a function."))
+
+    (define-key-after map [hi-lock-global-variable]
+      '(menu-item "Highlight global variable" hi-lock-global-variable
+		  :help "Highlight something at point that is a global variable."))
+
+    (define-key-after map [hi-lock-revert-patterns-from-file]
+      '(menu-item "Revert patterns from buffer" hi-lock-revert-patterns-from-file
+		  :help "Revert all highlighting patters to the patterns in the dedicated buffer."
+		  :enable hi-lock-patterns-file))
+
+    (define-key-after map [hi-lock-revert-patterns-file-name]
+      '(menu-item "Revert name of patterns-file" hi-lock-revert-patterns-file-name
+		  :help "Revert the name of the file storing the highlighting patterns."))
     map)
   "Menu for hi-lock mode.")
 
@@ -281,6 +351,11 @@ a library is being loaded.")
     (define-key map "\C-xw." 'highlight-symbol-at-point)
     (define-key map "\C-xwr" 'unhighlight-regexp)
     (define-key map "\C-xwb" 'hi-lock-write-interactive-patterns)
+    (define-key map "\C-xwc" 'hi-lock-constant)
+    (define-key map "\C-xwf" 'hi-lock-functionlike)
+    (define-key map "\C-xwg" 'hi-lock-global-variable)
+    (define-key map "\C-xw!" 'hi-lock-revert-patterns-from-file)
+    (define-key map "\C-xwn" 'hi-lock-revert-patterns-file-name)
     map)
   "Key map for hi-lock.")
 
@@ -348,7 +423,56 @@ where FOO is a list of patterns.  The patterns must start before
 position \(number of characters into buffer)
 `hi-lock-file-patterns-range'.  Patterns will be read until
 Hi-lock: end is found.  A mode is excluded if it's in the list
-`hi-lock-exclude-modes'."
+`hi-lock-exclude-modes'.
+
+\\[hi-lock-revert-patterns-file-name]
+  Search the current buffer for the variable
+  `hi-lock-patterns-file' and set it (to a potentially new value)
+  even when this variable is already set.
+
+This variable is used to specify a file in which to store
+highlighting-patterns.  This allows you to keep the patterns in a
+separate file which can be shared among multiple files.  This is
+particularly useful when editing source code because you can use
+a single file with highlighting-patterns which is shared by
+multiple files of the same project.
+
+When using a separate file, highlighting-patterns can still be
+written to the current buffer with
+\\[hi-lock-write-interactive-patterns].  Both the patterns from
+the current buffer and from the separate file apply.
+
+The file with the highlighting-patterns is transparently
+maintained in a dedicated buffer.  The dedicated buffer is
+automatically saved to `hi-lock-patterns-file' when the current
+buffer is saved.
+
+You can specify `hi-lock-patterns-file' as a buffer-local
+variable.  Please note that the value of this variable (the file
+name) must be given in double-quotes.
+
+Please see also `hi-lock-file-name-specifier'.
+
+\\[hi-lock-constant]
+  Highlight the thing at point with the `hi-constant' face.
+
+\\[hi-lock-functionlike]
+  Highlight the thing at point with the `hi-functionlike' face.
+
+\\[hi-lock-global-variable]
+  Highlight the thing at point with the `hi-global' face.
+
+\\[hi-lock-revert-patterns-from-file]
+  Revert the currently used highlighting-patterns to the patterns
+  in `hi-lock-patterns-file'.
+
+\\[hi-lock-revert-patterns-file-name]
+  Once `hi-lock-patterns-file' has been set, the current buffer
+  is not searched again for a line specifying this variable.  You
+  can revert to the value specified in the current buffer with
+  \\[hi-lock-revert-patterns-file-name].  This is for instances
+  when you modified the value of the variable and want the new
+  value take effect."
   :group 'hi-lock
   :lighter (:eval (if (or hi-lock-interactive-patterns
 			  hi-lock-file-patterns)
@@ -377,7 +501,10 @@ versions before 22 use the following in your init file:
       (progn
 	(define-key-after menu-bar-edit-menu [hi-lock]
 	  (cons "Regexp Highlighting" hi-lock-menu))
+	;; order does matter, see `hi-lock-apply-patterns-from-file'
 	(hi-lock-find-patterns)
+	(hi-lock-apply-patterns-from-file)
+	(add-hook 'after-save-hook 'hi-lock-write-patterns-file t t)
         (add-hook 'font-lock-mode-hook 'hi-lock-font-lock-hook nil t)
         ;; Remove regexps from font-lock-keywords (bug#13891).
 	(add-hook 'change-major-mode-hook (lambda () (hi-lock-mode -1)) nil t))
@@ -393,7 +520,8 @@ versions before 22 use the following in your init file:
       (remove-overlays nil nil 'hi-lock-overlay t)
       (when font-lock-fontified (font-lock-fontify-buffer)))
     (define-key-after menu-bar-edit-menu [hi-lock] nil)
-    (remove-hook 'font-lock-mode-hook 'hi-lock-font-lock-hook t)))
+    (remove-hook 'font-lock-mode-hook 'hi-lock-font-lock-hook t)
+    (remove-hook 'after-save-hook 'hi-lock-write-patterns-file t)))
 
 ;;;###autoload
 (define-globalized-minor-mode global-hi-lock-mode
@@ -624,6 +752,84 @@ be found in variable `hi-lock-interactive-patterns'."
   (when (> (point) hi-lock-file-patterns-range)
     (warn "Inserted keywords not close enough to top of file")))
 
+(defsubst hi-lock-comment-start-protected ()
+  "Since `comment-start' can sometimes be nil, return a default
+for such instances, otherwise return `comment-start'."
+  (or comment-start "# "))
+
+(defun hi-lock-get-patterns-file-name (&optional force)
+  "When `hi-lock-patterns-file' is not nil, attempt to set it from
+`hi-lock-file-name-specifier' by searching the current buffer, unless
+the variable is already set.
+
+When the optional argument FOCE is not nil, attempt to set the
+variable regardless whether it is already set or not.
+
+The search is limited to between `point-min' and (+ (point-min) 1024)."
+  (interactive)
+  (unless (or
+	   (not force)
+	   hi-lock-patterns-file)
+    (save-excursion
+      (save-restriction
+	(widen)
+	(goto-char (point-min))
+	(let ((file-name-specifier
+	       (concat "^" (hi-lock-comment-start-protected) "[:space:]*" hi-lock-file-name-specifier ": ")))
+	  (when (re-search-forward file-name-specifier (+ (point) 1024) t)
+	    (when (looking-at "\\\"") (forward-char)
+		  (setq hi-lock-patterns-file (thing-at-point 'filename t)))))))))
+
+(defun hi-lock-revert-patterns-file-name ()
+  "Use `hi-lock-get-patterns-file-name' to revert
+`hi-lock-patterns-file' even when `hi-lock-patterns-file' is
+already set."
+  (interactive)
+  (hi-lock-get-patterns-file-name t)
+  (message "use highlighting-patterns from %s"
+	   hi-lock-patterns-file))
+
+(defsubst hi-lock-make-reasonable-end-marker (for-writing)
+  "Return a regex which is a reasonable end-marker to indicate where
+ hi-lock highlighting-patterns inserted into a dedicated buffer
+ end. Reasonable particularly means that the marker shall be usable
+ even when `comment-start' is nil.
+
+When the argument 'for-writing' is nil, return a regex which matches
+the end-marker used in the patterns´ buffer.
+
+Otherwise, the returned marker is suited to be appended to a buffer."
+  (if for-writing
+      (concat (hi-lock-comment-start-protected) hi-lock-patterns-end-marker)
+    (concat "^" (hi-lock-comment-start-protected) "\\_<" hi-lock-patterns-end-marker "\\_>")))
+
+(defun hi-lock-quick-add (whichface)
+  "Highlight something at point with a face given in whichface."
+  (let* ((regexp (hi-lock-regexp-okay (find-tag-default-as-symbol-regexp))))
+    (hi-lock-set-pattern regexp whichface))
+  ;; set modified to get the dedicated patterns buffer updated
+  (if hi-lock-patterns-file
+      (set-buffer-modified-p t)
+    (message "The variable `hi-lock-patterns-file' needs to be set to specify a dedicated buffer to store patterns." )))
+
+(defun hi-lock-constant ()
+  "Add a pattern to highlight something at point that is a
+constant."
+  (interactive)
+  (hi-lock-quick-add 'hi-constant))
+
+(defun hi-lock-functionlike ()
+  "Add a pattern to highlight something at point that is like a
+function."
+  (interactive)
+  (hi-lock-quick-add 'hi-functionlike))
+
+(defun hi-lock-global-variable ()
+  "Add a pattern to highlight something at point that is a
+global variable."
+  (interactive)
+  (hi-lock-quick-add 'hi-global-variable))
+
 ;; Implementation Functions
 
 (defun hi-lock-process-phrase (phrase)
@@ -752,6 +958,97 @@ with completion and history."
         (hi-lock-set-file-patterns all-patterns)
         (if (called-interactively-p 'interactive)
             (message "Hi-lock added %d patterns." (length all-patterns)))))))
+
+(defun hi-lock-get-patterns-from-file (file)
+  "Read hi-lock-mode highlighting-patterns from a file and return
+the patterns read."
+  (with-current-buffer
+      (find-file-noselect file)
+    (goto-char (point-min))
+    (let ((marker-pos
+	   (re-search-forward (hi-lock-make-reasonable-end-marker nil) (point-max) t)))
+      (when marker-pos
+	(goto-char marker-pos)
+	(forward-line -1)
+	(end-of-line)
+	(setq marker-pos (point))
+	(goto-char (point-min))
+	(message "reading hi-lock highlighting-patterns from %s (characters %d..%d)"
+		 (buffer-name)
+		 (point-min) marker-pos)
+	(let ((patterns nil))
+	  (while (< (point) marker-pos)
+	    (setq patterns (append (read (current-buffer)) patterns)))
+	  patterns)))))
+
+(defun hi-lock-apply-patterns-from-file ()
+  "Use hi-lock-mode highlighting-patterns from another file with this file.
+
+Which file to read the patterns from is specified through
+`hi-lock-file-name-specifier'.  To specify a file, put a line
+like
+
+
+// hi-lock-filename: ../some-file.fontify
+
+
+into the buffer you want to use the file with.  The file will be
+visited in another buffer, and additional patterns are written to
+the other buffer and saved to the file when this file is saved."
+  (hi-lock-get-patterns-file-name)
+  (when hi-lock-patterns-file
+    (let ((patterns (hi-lock-get-patterns-from-file hi-lock-patterns-file)))
+      ;; add the patterns specified within the current buffer because
+      ;; `hi-lock-set-file-patterns' unsets them
+      (setq patterns (append hi-lock-file-patterns patterns))
+      (if (not patterns)
+	  (message "found no patterns to apply to %s in %s"
+		   (buffer-name)
+		   hi-lock-patterns-file)
+	(hi-lock-set-file-patterns patterns)
+	(message "%d patterns applied from file %s to buffer %s"
+		 (length patterns)
+		 hi-lock-patterns-file
+		 (buffer-name))))))
+
+(defun hi-lock-write-patterns-file ()
+  "When `hi-lock-patterns-file' is not nil, update the dedicated
+buffer holding the hi-lock highlighting-patterns and save the
+buffer to `hi-lock-patterns-file'."
+  (interactive)
+  (hi-lock-get-patterns-file-name)
+  (when hi-lock-patterns-file
+    (let ((all-patterns
+	   (delete-dups (append
+			 ;; put most recently added into first line of buffer
+			 hi-lock-interactive-patterns
+			 (hi-lock-get-patterns-from-file hi-lock-patterns-file)))))
+      (with-current-buffer
+	  (find-file-noselect hi-lock-patterns-file)
+	(erase-buffer)
+	(mapc
+	 (lambda (this)
+	   (insert (format "(%s)\n" (prin1-to-string this))))
+	 all-patterns)
+	(insert (hi-lock-make-reasonable-end-marker t) "\n")
+	(save-buffer)))))
+
+(defun hi-lock-revert-patterns-from-file ()
+  "Unset all hi-lock highlighting-patterns for the current buffer
+and apply patterns from the buffers` patterns file.  Do nothing
+when no file for storing the patterns is specified for the
+current buffer."
+  (interactive)
+  (hi-lock-get-patterns-file-name)
+  (if (not hi-lock-patterns-file)
+      (error "No buffer with patterns to revert to has been set")
+    (when hi-lock-interactive-patterns
+      (mapc
+       (lambda (this)
+	 (hi-lock-unface-buffer (car this)))
+       hi-lock-interactive-patterns)
+      (setq hi-lock-interactive-patterns nil))
+    (hi-lock-apply-patterns-from-file)))
 
 (defun hi-lock-font-lock-hook ()
   "Add hi-lock patterns to font-lock's."

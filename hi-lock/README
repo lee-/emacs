@@ -1,0 +1,47 @@
+This is an extension to hi-lock mode (of bzr revno 116727):
+
+You can use the buffer-local variable `hi-lock-patterns-file' to
+specify a file to write the higlighting-patterns to.  When this
+variable is set, the highlighting-patterns will be kept in a dedicated
+buffer instead of being written into the very file you`re editing.
+
+This is particularly useful --- and intended --- for highlighting
+source code: You might have multiple source files of a project that
+share a number of highlighting patterns.  Rather than putting (a
+lengthy list of) all the patterns into every file, you can set
+`hi-lock-patterns-file' for these files to point to a single file and
+have the patterns applied to them.  This is like a '#include
+"highlighting.patterns"'.
+
+Some functions and faces are provided to highlight constants, global
+variables and function-like indentifiers.  Key bindings are provided:
+
+
+|-----------------+-------------|
+| type            | key binding |
+|-----------------+-------------|
+| constant        | C-x w c     |
+| global variable | C-x w g     |
+| function-like   | C-x w f     |
+|-----------------+-------------|
+
+You can revert to the highlighting-patterns in the dedicated buffer
+with 'C-x w !'.
+
+
+The buffer is transparently maintained and saved when you use these
+key bindings.
+
+Besides using a separate file to store the highlighting-patterns, you
+can store the patters in the same file they apply to the same as the
+unmodified hi-lock-mode does.  In case both patterns from a file and
+patterns in the same buffer are used, both types of patterns
+apply. This allows you to have a file with patterns used with multiple
+files and also per-file patterns ("local patterns") at the same time.
+The local patterns useful for instances when you want to highlight
+something in one particular file but not in others while all the files
+are using a separate file with common patterns.
+
+
+To use this extended mode, put a line like (load "hi-lock") into your
+~/.emacs.  It replaces the hi-lock mode that is part of emacs.
