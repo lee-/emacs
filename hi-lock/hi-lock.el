@@ -757,12 +757,13 @@ be found in variable `hi-lock-interactive-patterns'."
 for such instances, otherwise return `comment-start'."
   (or comment-start "# "))
 
+;;;###autoload
 (defun hi-lock-get-patterns-file-name (&optional force)
   "When `hi-lock-patterns-file' is not nil, attempt to set it from
 `hi-lock-file-name-specifier' by searching the current buffer, unless
 the variable is already set.
 
-When the optional argument FOCE is not nil, attempt to set the
+When the optional argument FORCE is not nil, attempt to set the
 variable regardless whether it is already set or not.
 
 The search is limited to between `point-min' and (+ (point-min) 1024)."
@@ -780,6 +781,7 @@ The search is limited to between `point-min' and (+ (point-min) 1024)."
 	    (when (looking-at "\\\"") (forward-char)
 		  (setq hi-lock-patterns-file (thing-at-point 'filename t)))))))))
 
+;;;###autoload
 (defun hi-lock-revert-patterns-file-name ()
   "Use `hi-lock-get-patterns-file-name' to revert
 `hi-lock-patterns-file' even when `hi-lock-patterns-file' is
@@ -812,18 +814,21 @@ Otherwise, the returned marker is suited to be appended to a buffer."
       (set-buffer-modified-p t)
     (message "The variable `hi-lock-patterns-file' needs to be set to specify a dedicated buffer to store patterns." )))
 
+;;;###autoload
 (defun hi-lock-constant ()
   "Add a pattern to highlight something at point that is a
 constant."
   (interactive)
   (hi-lock-quick-add 'hi-constant))
 
+;;;###autoload
 (defun hi-lock-functionlike ()
   "Add a pattern to highlight something at point that is like a
 function."
   (interactive)
   (hi-lock-quick-add 'hi-functionlike))
 
+;;;###autoload
 (defun hi-lock-global-variable ()
   "Add a pattern to highlight something at point that is a
 global variable."
