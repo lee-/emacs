@@ -18,7 +18,7 @@
 ;;
 ;;TAG:CREATED 2014-03-18
 ;;
-;TAG:LAST-MODIFIED 2014-03-20 16:47:07 CET
+;TAG:LAST-MODIFIED 2014-03-21 05:08:33 CET
 ;TAG:FILENAME multisearch.el
 
 
@@ -222,25 +222,23 @@ directory names."
 (defsubst multisearch-directory-ref-p (dots)
   "Return t when the string DOTS ends in a directory reference."
   (or
-   (string-match "\\.$" dots)
-   (string-match "\\.\\.$" dots)))
+   (string-match "\\.\\'" dots)
+   (string-match "\\.\\.\\'" dots)))
 
 
 (defun multisearch-make-directory-list (of-directory)
   "Return a list of all subdirectories of OF-DIRECTORY.  The list
 includes OF-DIRECTORY."
-  (let ((new-dir-list nil)
+  (let ((new-dir-list (list (expand-file-name of-directory)))
 	(this-dir (directory-files of-directory t nil t)))
     (dolist (entry this-dir new-dir-list)
       (when (and
-	     (not (string-equal entry of-directory))
 	     (not (multisearch-directory-ref-p entry))
 	     (file-directory-p entry)
 	     (file-readable-p entry))
-	(setq new-dir-list (cons entry new-dir-list))
-	(let ((subdir (multisearch-make-directory-list entry)))
-	  (when subdir
-	    (setq new-dir-list (append (cons of-directory subdir) new-dir-list))))))))
+	(setq new-dir-list (append
+			    new-dir-list
+			    (multisearch-make-directory-list entry)))))))
 
 
 (defun multisearch-make-files-list (directory &optional match)
@@ -266,13 +264,13 @@ DIRECTORY-FILES-LIST.
 'Clean' means that only the names of regular files which are readable
 are on the list."
 (let ((clean-files-list nil))
-  (dolist (this directory-files-list clean-files-list)
+  (dolist (this directory-files-list (delete-dups clean-files-list))
     (when (and
 	   (not (multisearch-directory-ref-p this))
 	   (not (file-directory-p this))
 	   (file-readable-p this)
 	   (file-regular-p this))
-      (setq clean-files-list (cons this clean-files-list))))))
+      (setq clean-files-list (cons (expand-file-name this) clean-files-list))))))
 
 
 (defun multisearch-make-directory-files-list (buffer)
@@ -356,9 +354,7 @@ quotes, unless specified with #include.  This is to make sure
 	  (when (and
 		 (file-directory-p subdir)
 		 (file-readable-p subdir))
-	    (let ((result-list (multisearch-make-directory-list subdir)))
-	      (when result-list
-		(setq all-subdirs (append result-list all-subdirs))))))
+	    (setq all-subdirs (append (multisearch-make-directory-list subdir) all-subdirs))))
 	(dolist (subdir all-subdirs)
 	  (dolist (file files-list)
 	    ;; // subdirs are already expanded file names
@@ -371,7 +367,7 @@ quotes, unless specified with #include.  This is to make sure
       ;; put 'file' on directory-files-list
       (dolist (this files-list)
 	(setq directory-files-list (cons (expand-file-name this) directory-files-list)))
-      (multisearch-cleanup-directory-files-list (delete-dups directory-files-list)))))
+      (multisearch-cleanup-directory-files-list directory-files-list))))
 
 
 (defun multisearch-estimate-buffer-creation (with-files)
@@ -444,15 +440,16 @@ see."
 	     (format "This search may create about %d buffers.  Continue? "
 		     (multisearch-estimate-buffer-creation files)))
 	    (multisearch-some-files files)
-	  (message "search cancled"))
+	  (message "search canceled"))
       (message "no files to search"))))
 
 
 (defun multisearch-re-search-files-in-current-directory (&optional match)
-  "Search for a regex in all files in the current directory.
+  "Search for a regex in files in the current directory.  When MATCH
+is not nil, include only those files in the search the names of which
+match the regexp MATCH.
 
-Unlike
-`multisearch-re-search-files-in-current-directory-with-subs',
+Unlike `multisearch-re-search-files-in-current-directory-with-subs',
 this search does not include files in sub-directories."
   (interactive)
   (let ((files (multisearch-make-files-list "." match)))
@@ -461,11 +458,15 @@ this search does not include files in sub-directories."
 	     (format "This search may create about %d buffers.  Continue? "
 		     (multisearch-estimate-buffer-creation files)))
 	    (multisearch-some-files files)
-	  (message "search cancled"))
+	  (message "search canceled"))
       (message "no files to search"))))
 
 
 (defun multisearch-re-search-files-in-current-directory-with-subs (&optional match)
+  "Search for a regexp in files in the current directory and the
+directories within the current directory.  When MATCH is not nil,
+include only those files in the search the names of which match
+the regexp MATCH."
   (interactive)
   (let ((directory-list (multisearch-make-directory-list "."))
 	(files (multisearch-make-files-list "." match)))
@@ -476,23 +477,30 @@ this search does not include files in sub-directories."
 	     (format "This search may create about %d buffers.  Continue? "
 		     (multisearch-estimate-buffer-creation files)))
 	    (multisearch-some-files files)
-	  (message "search cancled"))
+	  (message "search canceled"))
       (message "no files to search"))))
 
 
 (defun multisearch-re-search-matching-files-in-current-directory ()
+  "Wrapper for `multisearch-re-search-files-in-current-directory'
+to read the regexp the names of the files to search through must
+match from the minibuffer."
   (interactive)
-  (let ((match (read-from-minibuffer "Regex files have to match (.*): ")))
+  (let ((match (read-from-minibuffer "Regex files have to match (nil): ")))
     (when (string-equal "" match)
-      (setq match ".*"))
+      (setq match nil))
     (multisearch-re-search-files-in-current-directory match)))
 
 
 (defun multisearch-re-search-matching-files-in-current-directory-with-subs ()
+  "Wrapper for
+`multisearch-re-search-files-in-current-directory-with-subs' to
+read the regexp the names of the files to search through from the
+minibuffer."
   (interactive)
   (let ((match (read-from-minibuffer "Regex files have to match (.*): ")))
     (when (string-equal "" match)
-      (setq match ".*"))
+      (setq match nil))
     (multisearch-re-search-files-in-current-directory-with-subs match)))
 
 
@@ -511,7 +519,7 @@ see."
 	     (format "This search may create about %d buffers.  Continue? "
 		     (multisearch-estimate-buffer-creation files)))
 	    (multisearch-some-files files)
-	  (message "search cancled"))
+	  (message "search canceled"))
       (message "no files to search"))))
 
 
