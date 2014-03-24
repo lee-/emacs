@@ -251,6 +251,10 @@ reading the buffer."
   "Patterns found in file for hi-lock.  Should not be changed.")
 (put 'hi-lock-file-patterns 'permanent-local t)
 
+(defvar-local hi-lock-other-patterns nil
+  "Patterns for hi-lock found in a separate file.  See
+`hi-lock-patterns-file'.")
+
 (defvar-local hi-lock-patterns-file nil
   "Remember the name of the file to read hi-lock highlighting-patterns
   for this buffer from.
@@ -510,13 +514,15 @@ versions before 22 use the following in your init file:
 	(add-hook 'change-major-mode-hook (lambda () (hi-lock-mode -1)) nil t))
     ;; Turned off.
     (when (or hi-lock-interactive-patterns
-	      hi-lock-file-patterns)
+	      hi-lock-file-patterns
+	      hi-lock-other-patterns)
       (when hi-lock-interactive-patterns
 	(font-lock-remove-keywords nil hi-lock-interactive-patterns)
 	(setq hi-lock-interactive-patterns nil))
       (when hi-lock-file-patterns
 	(font-lock-remove-keywords nil hi-lock-file-patterns)
 	(setq hi-lock-file-patterns nil))
+      (hi-lock-unapply-patterns-from-file)
       (remove-overlays nil nil 'hi-lock-overlay t)
       (when font-lock-fontified (font-lock-fontify-buffer)))
     (define-key-after menu-bar-edit-menu [hi-lock] nil)
@@ -766,20 +772,24 @@ the variable is already set.
 When the optional argument FORCE is not nil, attempt to set the
 variable regardless whether it is already set or not.
 
+In any case, return the value of `hi-lock-patterns-file', which
+can be nil when not specified in the current buffer.
+
 The search is limited to between `point-min' and (+ (point-min) 1024)."
   (interactive)
-  (unless (or
-	   (not force)
-	   hi-lock-patterns-file)
-    (save-excursion
-      (save-restriction
-	(widen)
-	(goto-char (point-min))
-	(let ((file-name-specifier
-	       (concat "^" (hi-lock-comment-start-protected) "[:space:]*" hi-lock-file-name-specifier ": ")))
-	  (when (re-search-forward file-name-specifier (+ (point) 1024) t)
-	    (when (looking-at "\\\"") (forward-char)
-		  (setq hi-lock-patterns-file (thing-at-point 'filename t)))))))))
+  (if (or
+       force
+       (not hi-lock-patterns-file))
+      (save-excursion
+	(save-restriction
+	  (widen)
+	  (goto-char (point-min))
+	  (let ((file-name-specifier
+		 (concat "^" (hi-lock-comment-start-protected) "[:space:]*" hi-lock-file-name-specifier ": ")))
+	    (when (re-search-forward file-name-specifier (+ (point) 1024) t)
+	      (when (looking-at "\\\"") (forward-char)
+		    (setq hi-lock-patterns-file (thing-at-point 'filename t))))))))
+  hi-lock-patterns-file)
 
 ;;;###autoload
 (defun hi-lock-revert-patterns-file-name ()
@@ -787,9 +797,10 @@ The search is limited to between `point-min' and (+ (point-min) 1024)."
 `hi-lock-patterns-file' even when `hi-lock-patterns-file' is
 already set."
   (interactive)
-  (hi-lock-get-patterns-file-name t)
-  (message "use highlighting-patterns from %s"
-	   hi-lock-patterns-file))
+  (if (hi-lock-get-patterns-file-name t)
+      (message "Use highlighting-patterns from %s"
+	       hi-lock-patterns-file)
+    (error "Nothing found to set `hi-lock-patterns-file' from")))
 
 (defsubst hi-lock-make-reasonable-end-marker (for-writing)
   "Return a regex which is a reasonable end-marker to indicate where
@@ -986,6 +997,13 @@ the patterns read."
 	    (setq patterns (append (read (current-buffer)) patterns)))
 	  patterns)))))
 
+(defsubst hi-lock-unapply-patterns-from-file ()
+  "Disable all highlighting-patterns from another file which is
+used with this file.  The patterns are not deleted or otherwise
+modified; only the highlighting they bring about is disabled."
+  (font-lock-remove-keywords nil hi-lock-other-patterns)
+  (setq hi-lock-other-patterns nil))
+
 (defun hi-lock-apply-patterns-from-file ()
   "Use hi-lock-mode highlighting-patterns from another file with this
   file.
@@ -997,36 +1015,34 @@ buffer-local variable.
 The file will be visited in another buffer, and additional patterns
 are written to the other buffer and saved to the file when this file
 is saved."
-  (hi-lock-get-patterns-file-name)
-  (when hi-lock-patterns-file
-    (let ((patterns (hi-lock-get-patterns-from-file hi-lock-patterns-file)))
-      ;; add the patterns specified within the current buffer because
-      ;; `hi-lock-set-file-patterns' unsets them
-      (setq patterns (append hi-lock-file-patterns patterns))
-      (if (not patterns)
-	  (message "found no patterns to apply to %s in %s"
-		   (buffer-name)
-		   hi-lock-patterns-file)
-	(hi-lock-set-file-patterns patterns)
-	(message "%d patterns applied from file %s to buffer %s"
-		 (length patterns)
-		 hi-lock-patterns-file
-		 (buffer-name))))))
+  (hi-lock-unapply-patterns-from-file)
+  (when (hi-lock-get-patterns-file-name)
+    (setq hi-lock-other-patterns (hi-lock-get-patterns-from-file hi-lock-patterns-file)))
+  (if (not hi-lock-other-patterns)
+      (message "found no patterns to apply to %s in %s"
+	       (buffer-name)
+	       hi-lock-patterns-file)
+    (font-lock-add-keywords nil hi-lock-other-patterns)
+    (message "%d patterns applied from file %s to buffer %s"
+	     (length hi-lock-other-patterns)
+	     hi-lock-patterns-file
+	     (buffer-name)))
+  (font-lock-fontify-buffer))
 
 (defun hi-lock-write-patterns-file ()
   "When `hi-lock-patterns-file' is not nil, update the dedicated
 buffer holding the hi-lock highlighting-patterns and save the
 buffer to `hi-lock-patterns-file'."
   (interactive)
-  (hi-lock-get-patterns-file-name)
-  (when hi-lock-patterns-file
+  (when (hi-lock-get-patterns-file-name)
     (let ((all-patterns
 	   (delete-dups (append
 			 ;; put most recently added into first line of buffer
 			 hi-lock-interactive-patterns
+			 ;; the patterns buffer may have been edited,
+			 ;; hence do not append `hi-lock-other-patterns'
 			 (hi-lock-get-patterns-from-file hi-lock-patterns-file)))))
-      (with-current-buffer
-	  (find-file-noselect hi-lock-patterns-file)
+      (with-current-buffer (find-file-noselect hi-lock-patterns-file)
 	(erase-buffer)
 	(mapc
 	 (lambda (this)
@@ -1041,21 +1057,18 @@ and apply patterns from the buffers` patterns file.  Do nothing
 when no file for storing the patterns is specified for the
 current buffer."
   (interactive)
-  (hi-lock-get-patterns-file-name)
-  (if (not hi-lock-patterns-file)
+  (hi-lock-unface-buffer t)
+  (hi-lock-unapply-patterns-from-file)
+  (if (not (hi-lock-get-patterns-file-name))
       (error "No buffer with patterns to revert to has been set")
-    (when hi-lock-interactive-patterns
-      (mapc
-       (lambda (this)
-	 (hi-lock-unface-buffer (car this)))
-       hi-lock-interactive-patterns)
-      (setq hi-lock-interactive-patterns nil))
+    (hi-lock-find-patterns)
     (hi-lock-apply-patterns-from-file)))
 
 (defun hi-lock-font-lock-hook ()
   "Add hi-lock patterns to font-lock's."
   (when font-lock-fontified
     (font-lock-add-keywords nil hi-lock-file-patterns t)
+    (font-lock-add-keywords nil hi-lock-other-patterns t)
     (font-lock-add-keywords nil hi-lock-interactive-patterns t)))
 
 (defvar hi-lock--hashcons-hash
