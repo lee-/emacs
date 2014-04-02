@@ -18,7 +18,7 @@
 ;;
 ;;TAG:CREATED 2014-03-18
 ;;
-;TAG:LAST-MODIFIED 2014-03-21 05:08:33 CET
+;TAG:LAST-MODIFIED 2014-04-02 20:18:35 CEST
 ;TAG:FILENAME multisearch.el
 
 
@@ -118,7 +118,7 @@ MY-STRING."
   (replace-regexp-in-string "^\\s-*\\|\\s-*$" "" my-string))
 
 
-(defun multisearch-some-files (files)
+(defun multisearch-some-files (files &optional search-for)
   "Search for a regex in multiple files and create a buffer to show
 the results.
 
@@ -127,17 +127,18 @@ before output is inserted into the buffer.  When another buffer is
 used, the contents of the buffer are not erased, and the output is
 inserted into the buffer at point.
 
-The regex to search for and which buffer to use for the output is
-queried via the minibuffer."
+The regex to search for, if not given in SEARCH-FOR, and which
+buffer to use for the output is queried via the minibuffer."
   (when files
-    (message "searching ...")
     (let ((orig-buffer (current-buffer))
-	  (for
-	   (read-from-minibuffer "Search regex: "))
+	  (for search-for)
 	  (result-buffer
 	   (read-from-minibuffer "Show results in buffer (*multisearch-results*): ")))
+      (unless for
+	(setq for (read-from-minibuffer "Search regex: ")))
       (when (string-equal result-buffer "")
 	(setq result-buffer "*multisearch-results*"))
+      (message "searching ...")
       (let ((buffer-list-before-new-buffer (buffer-list))
 	    (results-buffer (get-buffer-create result-buffer)))
 	(multisearch-remember-buffer orig-buffer buffer-list-before-new-buffer results-buffer)
