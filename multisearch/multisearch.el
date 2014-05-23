@@ -118,33 +118,38 @@ MY-STRING."
   (replace-regexp-in-string "^\\s-*\\|\\s-*$" "" my-string))
 
 
-(defun multisearch-some-files (files &optional search-for)
+(defun multisearch-some-files (files &optional for result-buffer-name)
   "Search for a regex in multiple files and create a buffer to show
 the results.
 
-The contents of the buffer are erased when the default buffer is used
-before output is inserted into the buffer.  When another buffer is
-used, the contents of the buffer are not erased, and the output is
-inserted into the buffer at point.
+The name of a buffer to show the search results in can be given
+in RESULT-BUFFER-NAME.  When RESULTS-BUFFER-NAME is nil, the user
+is queried for the name of a buffer.
 
-The regex to search for, if not given in SEARCH-FOR, and which
-buffer to use for the output is queried via the minibuffer."
+The contents of the buffer are erased when the default buffer
+name is used before output is inserted into the buffer.  When
+another buffer name is used, the contents of the buffer are not
+erased, and the output is inserted into the buffer at point.
+
+The regexp to search for, if not given in FOR, is queried via the
+minibuffer."
   (when files
     (let ((orig-buffer (current-buffer))
-	  (for search-for)
-	  (result-buffer
-	   (read-from-minibuffer "Show results in buffer (*multisearch-results*): ")))
+	  (buffer-provided result-buffer-name))
+      (unless buffer-provided
+	(read-from-minibuffer "Show results in buffer (*multisearch-results*): "))
+      (when (string-equal result-buffer-name "")
+	(setq result-buffer-name "*multisearch-results*"))
       (unless for
 	(setq for (read-from-minibuffer "Search regex: ")))
-      (when (string-equal result-buffer "")
-	(setq result-buffer "*multisearch-results*"))
       (message "searching ...")
       (let ((buffer-list-before-new-buffer (buffer-list))
-	    (results-buffer (get-buffer-create result-buffer)))
+	    (results-buffer (get-buffer-create result-buffer-name)))
 	(multisearch-remember-buffer orig-buffer buffer-list-before-new-buffer results-buffer)
 	(setq buffer-list-before-new-buffer (cons results-buffer buffer-list-before-new-buffer))
 	(with-current-buffer results-buffer
-	  (when (string-equal result-buffer "*multisearch-results*")
+	  (when (or buffer-provided
+		    (string-equal result-buffer-name "*multisearch-results*"))
 	    (erase-buffer)))
 	(dolist (foo files)
 	  (when (file-readable-p foo)
@@ -182,7 +187,7 @@ buffer to use for the output is queried via the minibuffer."
 			(insert (format "}\n\n"))))))))))
 	(let ((created-buffers (copy-sequence multisearch-buffer-list)))
 	  (with-current-buffer results-buffer
-	    (insert "The following files were searched:\n\n")
+	    (insert (concat "The following files were searched for '" for "':\n\n"))
 	    (dolist (this files)
 	      (insert (format "%s\n" this)))
 	    (insert (format
