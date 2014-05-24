@@ -137,7 +137,7 @@ minibuffer."
     (let ((orig-buffer (current-buffer))
 	  (buffer-provided result-buffer-name))
       (unless buffer-provided
-	(read-from-minibuffer "Show results in buffer (*multisearch-results*): "))
+	(setq result-buffer-name (read-from-minibuffer "Show results in buffer (*multisearch-results*): ")))
       (when (string-equal result-buffer-name "")
 	(setq result-buffer-name "*multisearch-results*"))
       (unless for
