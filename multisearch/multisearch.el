@@ -200,6 +200,24 @@ minibuffer."
 	(switch-to-buffer-other-window results-buffer)))))
 
 
+(defsubst multisearch-get-thing ()
+  "Since `thing-at-point' does not always return the value of a
+key-value pair, this function attemtps to do a better job for the
+purpose of multisearch by trying to return the string after the
+first double-quote after point.
+
+When no double quote is found, nil is returned.  The search is
+limited to the current line."
+  (save-excursion
+    (backward-char)
+    (if (re-search-forward "\"\\|<" (line-end-position) t)
+	(let ((start-pos (point))
+	      (delta (skip-chars-forward "^\\(\"\\|>\\)" (line-end-position))))
+	  (buffer-substring-no-properties start-pos (+ start-pos delta)))
+      (message (format "Multisearch syntax error in %s, %s" (buffer-name) (what-line)))
+      nil)))
+
+
 (defun multisearch-make-token-list (buffer token-rx &optional is-directory)
   "Re-search BUFFER for key-value pairs and return a list of values
   found from keys.  Each value is listed only once.
@@ -217,7 +235,7 @@ directory names."
 		   (list (buffer-file-name))
 		 nil)))
 	  (while (re-search-forward token-rx (point-max) t)
-	    (let ((token (thing-at-point 'filename t)))
+	    (let ((token (multisearch-get-thing)))
 	      (when token
 		(when (and is-directory (not (string-match "/$" token)))
 		  (setq token (concat token "/")))
@@ -316,7 +334,7 @@ assumed for it instead.
 
 The names of files and directories should be enclosed in double
 quotes, unless specified with #include.  This is to make sure
-`thing-at-point' reliably returns them."
+`multisearch-get-thing' reliably returns them."
   (message "building files list ...")
   (with-current-buffer buffer
     (let ((directory-list
