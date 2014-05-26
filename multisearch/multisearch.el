@@ -212,7 +212,7 @@ limited to the current line."
     (backward-char)
     (if (re-search-forward "\"\\|<" (line-end-position) t)
 	(let ((start-pos (point))
-	      (delta (skip-chars-forward "^\\(\"\\|>\\)" (line-end-position))))
+	      (delta (skip-chars-forward "^\">" (line-end-position))))
 	  (buffer-substring-no-properties start-pos (+ start-pos delta)))
       (message (format "Multisearch syntax error in %s, %s" (buffer-name) (what-line)))
       nil)))
